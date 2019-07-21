@@ -1,5 +1,5 @@
 [package]
-name = "HS110-energy-meter"
+name = "hs110_energy_meter"
 version = "0.1.0"
 authors = ["Sven Kube <git@sven-kube.de>"]
 edition = "2018"
