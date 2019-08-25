@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hs110_energy_meter"
+name = "hs110"
 version = "0.1.0"
 dependencies = [
  "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",

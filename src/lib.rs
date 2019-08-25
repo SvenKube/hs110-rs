@@ -4,21 +4,18 @@ extern crate bytes;
 extern crate serde;
 extern crate serde_json;
 
+pub mod types;
+
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::{TcpStream};
-use std::thread;
-
-pub mod types;
 
 use types::*;
-use std::time::Duration;
-use std::borrow::Borrow;
 
 #[derive(Clone)]
-struct SmartPlug {
+pub struct SmartPlug {
     ip: String,
 }
 
@@ -32,7 +29,6 @@ impl SmartPlug {
             "system": {
                 "get_sysinfo":{}
             }
-
         });
 
         send_message::<PlugInfo>(message.to_string())
@@ -131,6 +127,7 @@ where
     }
 }
 
+/*
 fn main() {
     let plug_ip = String::from("192.168.178.97:9999");
     let plug = SmartPlug::new(plug_ip);
@@ -168,3 +165,4 @@ fn main() {
     child.join();
     child2.join();
 }
+*/
