@@ -74,7 +74,7 @@ fn encrypt_message(msg: String) -> BytesMut {
         result.put(a as u8);
     }
 
-    return result;
+    result
 }
 
 fn decrypt_message(cipher: &mut [u8]) -> String {
@@ -83,9 +83,9 @@ fn decrypt_message(cipher: &mut [u8]) -> String {
     let mut key = 0xAB;
     let mut next: u8;
 
-    for i in 0..len {
-        next = cipher[i];
-        cipher[i] ^= key;
+    for ci in cipher.iter_mut().take(len) {
+        next = *ci;
+        *ci ^= key;
         key = next;
     }
 
@@ -105,17 +105,23 @@ where
     };
 
     let message = encrypt_message(msg);
-    stream.write_all(&message);
+    if let Err(e) = stream.write_all(&message) {
+         eprintln!("{}", e);
+    }
 
     // read the length of the actual data
     let mut resp = vec![0; 4];
-    stream.read(&mut resp);
+    if let Err(e) = stream.read(&mut resp) {
+        eprintln!("{}", e);
+    }
 
     let len = BigEndian::read_u32(&resp);
 
     // read the actual data
     let mut data = vec![0; len as usize];
-    stream.read(&mut data);
+    if let Err(e) = stream.read(&mut data) {
+        eprintln!("{}", e);
+    }
 
     let decrypted = decrypt_message(&mut data);
 
