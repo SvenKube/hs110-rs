@@ -1,25 +1,69 @@
 #[macro_use]
 extern crate serde_derive;
+extern crate bytes;
 extern crate serde;
 extern crate serde_json;
-extern crate bytes;
 
-use bytes::{BufMut, BytesMut};
-use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use byteorder::{BigEndian, ByteOrder};
+use bytes::{BufMut, BytesMut};
 use serde_json::json;
-use std::io::{Write, Read};
+use std::io::{Read, Write};
+use std::net::{TcpStream};
+use std::thread;
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Sysinfo {
-    system: serde_json::Value,
+pub mod types;
+
+use types::*;
+use std::time::Duration;
+use std::borrow::Borrow;
+
+#[derive(Clone)]
+struct SmartPlug {
+    ip: String,
 }
 
-struct SmarPlug {}
+impl SmartPlug {
+    pub fn new(ip: String) -> SmartPlug {
+        SmartPlug { ip }
+    }
 
-impl SmarPlug {
-    pub fn get_sysinfo(&self) -> Option<Sysinfo> {
-        None
+    pub fn get_sysinfo(&self) -> Option<PlugInfo> {
+        let message = json!({
+            "system": {
+                "get_sysinfo":{}
+            }
+
+        });
+
+        send_message::<PlugInfo>(message.to_string())
+    }
+
+    pub fn turn_on(&self) -> Option<PlugInfo> {
+        send_message::<PlugInfo>(json!({
+            "system":{
+                "set_relay_state": {
+                    "state": 1
+                }
+            }
+        }).to_string())
+    }
+
+    pub fn turn_off(&self) -> Option<PlugInfo> {
+        send_message::<PlugInfo>(json!({
+            "system":{
+                "set_relay_state": {
+                    "state": 0
+                }
+            }
+        }).to_string())
+    }
+
+    pub fn get_emeter_realtime(&self) -> Option<PlugInfo> {
+        send_message::<PlugInfo>(json!({
+            "emeter": {
+                "get_realtime": {}
+            }
+        }).to_string())
     }
 }
 
@@ -37,7 +81,7 @@ fn encrypt_message(msg: String) -> BytesMut {
     return result;
 }
 
-fn decrypt(cipher: &mut [u8]) -> String {
+fn decrypt_message(cipher: &mut [u8]) -> String {
     let len = cipher.len();
 
     let mut key = 0xAB;
@@ -52,15 +96,16 @@ fn decrypt(cipher: &mut [u8]) -> String {
     String::from_utf8_lossy(cipher).into_owned()
 }
 
-fn send_message<'a, T>(msg: String) -> Option<T>
-where T: serde::Deserialize<'a>
+fn send_message<T>(msg: String) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
 {
     let mut stream = match TcpStream::connect("192.168.178.97:9999") {
         Ok(stream) => stream,
         Err(error) => {
             eprintln!("Error creating TcpStream: {}", error);
-            return None
-        },
+            return None;
+        }
     };
 
     let message = encrypt_message(msg);
@@ -76,53 +121,50 @@ where T: serde::Deserialize<'a>
     let mut data = vec![0; len as usize];
     stream.read(&mut data);
 
-    let decrypted = decrypt(&mut data);
+    let decrypted = decrypt_message(&mut data);
 
+    println!("{}", decrypted);
 
-    let json: T = serde_json::from_str(decrypted.as_str()).unwrap();
-
-
-    Some(json)
+    match serde_json::from_str(decrypted.as_str()) {
+        Ok(object) => Some(object),
+        Err(_) => None
+    }
 }
 
 fn main() {
-    let _plug_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 178, 97));
+    let plug_ip = String::from("192.168.178.97:9999");
+    let plug = SmartPlug::new(plug_ip);
 
-    // let msg = String::from("{\"system\":{\"set_relay_state\":{\"state\":0}}}");
-    let msg = json!({
-        "system": {
-            "get_sysinfo":{}
+    let p1 = plug.clone();
+    let p2 = plug.clone();
+
+    //let sysinfo = plug.get_sysinfo();
+    //plug.turn_on();
+    //plug.turn_off();
+
+    let child = thread::spawn(move || {
+        loop {
+            let res = p1.get_emeter_realtime();
+            let realtime_stats = res.unwrap()
+                .emeter.unwrap()
+                .get_realtime.unwrap();
+
+            println!("Current realtime stats: {:#?}", realtime_stats);
+
+            thread::sleep(Duration::from_secs(1));
         }
     });
 
+    let child2 = thread::spawn(move || {
+        loop {
+            p2.turn_on();
+            thread::sleep(Duration::from_secs(20));
 
+            p2.turn_off();
+            thread::sleep(Duration::from_secs(20));
+        }
+    });
 
-    let response = match send_message::<serde_json::Value>(msg.to_string()) {
-        Some(data) => data,
-        None => {
-            eprintln!("Could not send message");
-            return;
-        },
-    };
-
-    println!("{:#?}", response);
-
-    println!("{}", response["system"]["get_sysinfo"]["deviceId"]);
-
-    /*
-
-
-    stream.write_all(&result)?;
-    let mut response = vec![0; 4];
-    stream.read(&mut response)?;
-
-    let length = u32::from_be_bytes(*pop(&response));
-
-    println!("{:#?}", length);
-
-    let mut res = vec![0; length as usize - 7];
-    stream.read(&mut res);
-
-    println!("{:#?}",str::from_utf8(&res).unwrap());
-    */
+    child.join();
+    child2.join();
 }
